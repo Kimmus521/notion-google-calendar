@@ -19,6 +19,15 @@
     --focus: #0f766e;
     --row: 44px;
     --gutter: 52px;
+
+    --cal-0: #0f766e;
+    --cal-1: #b45309;
+    --cal-2: #4f46e5;
+    --cal-3: #be185d;
+    --cal-4: #15803d;
+    --cal-5: #0369a1;
+    --cal-6: #7c3aed;
+    --cal-7: #a16207;
   }
 
   @media (prefers-color-scheme: dark) {
@@ -34,6 +43,15 @@
       --event-ink: #b8f3e6;
       --now: #fdba74;
       --focus: #5eead4;
+
+      --cal-0: #5eead4;
+      --cal-1: #fdba74;
+      --cal-2: #a5b4fc;
+      --cal-3: #f9a8d4;
+      --cal-4: #86efac;
+      --cal-5: #7dd3fc;
+      --cal-6: #c4b5fd;
+      --cal-7: #fde047;
     }
   }
 
@@ -195,18 +213,32 @@
   }
 
   .notice {
+    grid-column: 1 / -1;
     padding: 24px 16px;
     color: var(--muted);
     font-size: 12px;
     line-height: 1.6;
   }
   .notice b { color: var(--ink); font-weight: 600; }
+
+  /* 캘린더별 색상 — --c 를 이벤트에 인라인으로 주입 */
+  .event, .chip {
+    background: color-mix(in srgb, var(--c, var(--event-rule)) 14%, transparent);
+    border-left-color: var(--c, var(--event-rule));
+    color: var(--ink);
+  }
+  .event .t { color: var(--c, var(--event-rule)); }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  .legend span { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--muted); }
+  .legend i { width: 8px; height: 8px; border-radius: 2px; background: var(--c); }
 </style>
 </head>
 <body>
 <div class="frame">
   <div class="bar">
     <span class="range" id="range">불러오는 중</span>
+    <span class="legend" id="legend"></span>
     <span class="spacer"></span>
     <span class="status" id="status"></span>
     <span class="nav">
@@ -231,6 +263,7 @@ const DOW = ['일', '월', '화', '수', '목', '금', '토'];
 
 let anchor = startOfWeek(new Date());   // 현재 보고 있는 주의 월요일
 let events = [];
+let calendars = [];
 let nowTimer = null;
 
 /* ── 날짜 유틸 ─────────────────────────────── */
@@ -264,6 +297,7 @@ async function load() {
     if (!res.ok) throw new Error(await res.text());
     const data = await res.json();
 
+    calendars = data.calendars || [];
     events = data.events.map((e) => ({
       ...e,
       startAt: new Date(e.start),
@@ -307,6 +341,14 @@ function render() {
       ? `${anchor.getFullYear()}년 ${anchor.getMonth() + 1}월 ${anchor.getDate()}–${last.getDate()}일`
       : `${anchor.getMonth() + 1}월 ${anchor.getDate()}일 – ${last.getMonth() + 1}월 ${last.getDate()}일`;
 
+  // 캘린더 범례 (2개 이상일 때만)
+  document.getElementById('legend').innerHTML =
+    calendars.length > 1
+      ? calendars.map((c) =>
+          `<span style="--c: var(--cal-${c.index % 8})"><i></i>${esc(c.name)}</span>`
+        ).join('')
+      : '';
+
   // 요일 머리글
   document.getElementById('head').innerHTML =
     '<div class="cell"></div>' +
@@ -325,7 +367,7 @@ function render() {
       days.map((d) => {
         const items = allDay.filter((e) => d >= new Date(e.startAt.getTime()) && d < e.endAt);
         return '<div class="lane">' +
-          items.map((e) => `<span class="chip" title="${esc(e.title)}">${esc(e.title)}</span>`).join('') +
+          items.map((e) => `<span class="chip" style="--c: var(--cal-${(e.cal || 0) % 8})" title="${esc(e.title)}">${esc(e.title)}</span>`).join('') +
           '</div>';
       }).join('');
   }
@@ -355,7 +397,7 @@ function render() {
       const top = (startMin - from * 60) / 60 * ROW;
       const h = Math.max(((endMin - startMin) / 60) * ROW - 2, 16);
       const w = 100 / e.laneCount;
-      return `<div class="event" style="top:${top}px;height:${h}px;left:${e.lane * w}%;width:calc(${w}% - 3px)" title="${esc(e.title)}">
+      return `<div class="event" style="--c: var(--cal-${(e.cal || 0) % 8});top:${top}px;height:${h}px;left:${e.lane * w}%;width:calc(${w}% - 3px)" title="${esc(e.title)}">
         <span class="s">${esc(e.title)}</span><span class="t">${hhmm(e.startAt)}</span>
       </div>`;
     }).join('');
