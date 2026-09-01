@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>주간 일정</title>
+<style>
+  :root {
+    --paper: #ffffff;
+    --ink: #1a1d23;
+    --muted: #767c86;
+    --hairline: #e7e8ec;
+    --hairline-soft: #f1f2f5;
+    --today-wash: rgba(15, 118, 110, 0.05);
+    --event-bg: rgba(15, 118, 110, 0.10);
+    --event-rule: #0f766e;
+    --event-ink: #0b4f49;
+    --now: #b54708;
+    --focus: #0f766e;
+    --row: 44px;
+    --gutter: 52px;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #191919;
+      --ink: #e8e9ea;
+      --muted: #8d939c;
+      --hairline: #2f3033;
+      --hairline-soft: #252628;
+      --today-wash: rgba(94, 234, 212, 0.06);
+      --event-bg: rgba(94, 234, 212, 0.12);
+      --event-rule: #5eead4;
+      --event-ink: #b8f3e6;
+      --now: #fdba74;
+      --focus: #5eead4;
+    }
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Apple SD Gothic Neo",
+                 "Noto Sans KR", Pretendard, sans-serif;
+    font-size: 13px;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .frame { display: flex; flex-direction: column; height: 100%; }
+
+  /* ── 상단 바 ───────────────────────────────── */
+  .bar {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    padding: 10px 12px 8px;
+    border-bottom: 1px solid var(--hairline);
+  }
+  .range { font-size: 14px; font-weight: 600; letter-spacing: -0.01em; }
+  .status { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .spacer { flex: 1; }
+
+  button {
+    font: inherit;
+    font-size: 12px;
+    color: var(--ink);
+    background: transparent;
+    border: 1px solid var(--hairline);
+    border-radius: 6px;
+    padding: 3px 9px;
+    cursor: pointer;
+  }
+  button:hover { border-color: var(--muted); }
+  button:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+  .nav { display: flex; gap: 4px; }
+
+  /* ── 요일 머리글 ───────────────────────────── */
+  .head {
+    display: grid;
+    grid-template-columns: var(--gutter) repeat(7, 1fr);
+    border-bottom: 1px solid var(--hairline);
+  }
+  .head .cell {
+    padding: 7px 8px 8px;
+    border-left: 1px solid var(--hairline-soft);
+    display: flex;
+    align-items: baseline;
+    gap: 5px;
+  }
+  .head .cell:first-child { border-left: none; }
+  .dow { font-size: 11px; color: var(--muted); }
+  .dnum { font-size: 15px; font-weight: 500; font-variant-numeric: tabular-nums; }
+  .cell.today .dow { color: var(--event-rule); }
+  .cell.today .dnum {
+    color: var(--event-rule);
+    box-shadow: 0 2px 0 var(--event-rule);
+  }
+
+  /* ── 종일 일정 띠 ──────────────────────────── */
+  .allday {
+    display: grid;
+    grid-template-columns: var(--gutter) repeat(7, 1fr);
+    border-bottom: 1px solid var(--hairline);
+  }
+  .allday.empty { display: none; }
+  .allday .lane { border-left: 1px solid var(--hairline-soft); padding: 4px; min-height: 26px; }
+  .allday .label {
+    font-size: 10px;
+    color: var(--muted);
+    padding: 6px 6px 0 0;
+    text-align: right;
+  }
+  .chip {
+    display: block;
+    font-size: 11px;
+    line-height: 1.4;
+    padding: 2px 6px;
+    margin-bottom: 3px;
+    border-radius: 4px;
+    background: var(--event-bg);
+    color: var(--event-ink);
+    border-left: 2px solid var(--event-rule);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* ── 시간 격자 ─────────────────────────────── */
+  .scroll { flex: 1; overflow-y: auto; overscroll-behavior: contain; }
+  .grid {
+    position: relative;
+    display: grid;
+    grid-template-columns: var(--gutter) repeat(7, 1fr);
+  }
+  .hours { position: relative; }
+  .hour-mark {
+    position: absolute;
+    right: 6px;
+    transform: translateY(-50%);
+    font-size: 10px;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .col {
+    position: relative;
+    border-left: 1px solid var(--hairline-soft);
+    background-image: linear-gradient(to bottom, var(--hairline-soft) 1px, transparent 1px);
+    background-size: 100% var(--row);
+  }
+  .col.today { background-color: var(--today-wash); }
+
+  .event {
+    position: absolute;
+    border-radius: 4px;
+    background: var(--event-bg);
+    border-left: 2px solid var(--event-rule);
+    color: var(--event-ink);
+    padding: 2px 5px;
+    overflow: hidden;
+    font-size: 11px;
+    line-height: 1.35;
+  }
+  .event .t { color: var(--event-rule); font-variant-numeric: tabular-nums; }
+  .event .s { display: block; font-weight: 500; }
+
+  .nowline {
+    position: absolute;
+    left: 0; right: 0;
+    height: 0;
+    border-top: 1px solid var(--now);
+    pointer-events: none;
+    z-index: 3;
+  }
+  .nowline::before {
+    content: "";
+    position: absolute;
+    left: -3px; top: -3px;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--now);
+  }
+  .nowtag {
+    position: absolute;
+    right: 6px;
+    transform: translateY(-50%);
+    font-size: 10px;
+    font-variant-numeric: tabular-nums;
+    color: var(--now);
+    background: var(--paper);
+    z-index: 3;
+  }
+
+  .notice {
+    padding: 24px 16px;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.6;
+  }
+  .notice b { color: var(--ink); font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="frame">
+  <div class="bar">
+    <span class="range" id="range">불러오는 중</span>
+    <span class="spacer"></span>
+    <span class="status" id="status"></span>
+    <span class="nav">
+      <button id="prev" aria-label="이전 주">‹</button>
+      <button id="today">이번 주</button>
+      <button id="next" aria-label="다음 주">›</button>
+    </span>
+  </div>
+
+  <div class="head" id="head"></div>
+  <div class="allday empty" id="allday"></div>
+
+  <div class="scroll" id="scroll">
+    <div class="grid" id="grid"></div>
+  </div>
+</div>
+
+<script>
+const ROW = 44;              // 1시간의 높이(px) — CSS의 --row와 일치시킬 것
+const REFRESH_MS = 60_000;   // 폴링 주기
+const DOW = ['일', '월', '화', '수', '목', '금', '토'];
+
+let anchor = startOfWeek(new Date());   // 현재 보고 있는 주의 월요일
+let events = [];
+let nowTimer = null;
+
+/* ── 날짜 유틸 ─────────────────────────────── */
+function startOfWeek(d) {
+  const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const shift = (x.getDay() + 6) % 7;   // 월요일 시작
+  x.setDate(x.getDate() - shift);
+  return x;
+}
+function addDays(d, n) {
+  const x = new Date(d);
+  x.setDate(x.getDate() + n);
+  return x;
+}
+function sameDay(a, b) {
+  return a.getFullYear() === b.getFullYear()
+      && a.getMonth() === b.getMonth()
+      && a.getDate() === b.getDate();
+}
+function hhmm(d) {
+  return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+}
+
+/* ── 데이터 ────────────────────────────────── */
+async function load() {
+  const timeMin = anchor.toISOString();
+  const timeMax = addDays(anchor, 7).toISOString();
+
+  try {
+    const res = await fetch(`/api/events?timeMin=${encodeURIComponent(timeMin)}&timeMax=${encodeURIComponent(timeMax)}`);
+    if (!res.ok) throw new Error(await res.text());
+    const data = await res.json();
+
+    events = data.events.map((e) => ({
+      ...e,
+      startAt: new Date(e.start),
+      endAt: new Date(e.end),
+    }));
+
+    document.getElementById('status').textContent = hhmm(new Date()) + ' 기준';
+    render();
+  } catch (err) {
+    console.error(err);
+    document.getElementById('grid').innerHTML =
+      '<div class="notice">캘린더를 불러오지 못했습니다.<br>' +
+      '<b>GOOGLE_CALENDAR_ID</b>와 <b>GOOGLE_SERVICE_ACCOUNT_KEY</b> 환경변수, ' +
+      '그리고 서비스 계정에 캘린더 보기 권한이 공유되어 있는지 확인해주세요.</div>';
+  }
+}
+
+/* ── 겹치는 일정 배치 ──────────────────────── */
+function assignLanes(list) {
+  const sorted = [...list].sort((a, b) => a.startAt - b.startAt || b.endAt - a.endAt);
+  const lanes = [];   // lane별 마지막 종료 시각
+  sorted.forEach((e) => {
+    let lane = lanes.findIndex((end) => end <= e.startAt);
+    if (lane === -1) { lane = lanes.length; }
+    lanes[lane] = e.endAt;
+    e.lane = lane;
+  });
+  const total = Math.max(lanes.length, 1);
+  sorted.forEach((e) => { e.laneCount = total; });
+  return sorted;
+}
+
+/* ── 렌더 ──────────────────────────────────── */
+function render() {
+  const today = new Date();
+  const days = Array.from({ length: 7 }, (_, i) => addDays(anchor, i));
+  const last = days[6];
+
+  document.getElementById('range').textContent =
+    anchor.getMonth() === last.getMonth()
+      ? `${anchor.getFullYear()}년 ${anchor.getMonth() + 1}월 ${anchor.getDate()}–${last.getDate()}일`
+      : `${anchor.getMonth() + 1}월 ${anchor.getDate()}일 – ${last.getMonth() + 1}월 ${last.getDate()}일`;
+
+  // 요일 머리글
+  document.getElementById('head').innerHTML =
+    '<div class="cell"></div>' +
+    days.map((d) => {
+      const on = sameDay(d, today) ? ' today' : '';
+      return `<div class="cell${on}"><span class="dow">${DOW[d.getDay()]}</span><span class="dnum">${d.getDate()}</span></div>`;
+    }).join('');
+
+  // 종일 일정
+  const allDayBar = document.getElementById('allday');
+  const allDay = events.filter((e) => e.allDay);
+  allDayBar.classList.toggle('empty', allDay.length === 0);
+  if (allDay.length) {
+    allDayBar.innerHTML =
+      '<div class="label">종일</div>' +
+      days.map((d) => {
+        const items = allDay.filter((e) => d >= new Date(e.startAt.getTime()) && d < e.endAt);
+        return '<div class="lane">' +
+          items.map((e) => `<span class="chip" title="${esc(e.title)}">${esc(e.title)}</span>`).join('') +
+          '</div>';
+      }).join('');
+  }
+
+  // 표시할 시간 범위: 기본 07–22시, 일정이 벗어나면 자동 확장
+  const timed = events.filter((e) => !e.allDay);
+  let from = 7, to = 22;
+  timed.forEach((e) => {
+    from = Math.min(from, e.startAt.getHours());
+    to = Math.max(to, e.endAt.getHours() + (e.endAt.getMinutes() ? 1 : 0));
+  });
+  to = Math.min(Math.max(to, from + 4), 24);
+
+  const height = (to - from) * ROW;
+  const grid = document.getElementById('grid');
+
+  const hourMarks = [];
+  for (let h = from; h <= to; h++) {
+    hourMarks.push(`<span class="hour-mark" style="top:${(h - from) * ROW}px">${String(h).padStart(2, '0')}</span>`);
+  }
+
+  const columns = days.map((d) => {
+    const dayEvents = assignLanes(timed.filter((e) => sameDay(e.startAt, d)));
+    const blocks = dayEvents.map((e) => {
+      const startMin = e.startAt.getHours() * 60 + e.startAt.getMinutes();
+      const endMin = Math.min(e.endAt.getHours() * 60 + e.endAt.getMinutes() || 24 * 60, 24 * 60);
+      const top = (startMin - from * 60) / 60 * ROW;
+      const h = Math.max(((endMin - startMin) / 60) * ROW - 2, 16);
+      const w = 100 / e.laneCount;
+      return `<div class="event" style="top:${top}px;height:${h}px;left:${e.lane * w}%;width:calc(${w}% - 3px)" title="${esc(e.title)}">
+        <span class="s">${esc(e.title)}</span><span class="t">${hhmm(e.startAt)}</span>
+      </div>`;
+    }).join('');
+    const on = sameDay(d, today) ? ' today' : '';
+    return `<div class="col${on}" style="height:${height}px">${blocks}</div>`;
+  }).join('');
+
+  grid.innerHTML = `<div class="hours" style="height:${height}px">${hourMarks.join('')}</div>` + columns;
+
+  drawNow(from, to);
+  if (nowTimer) clearInterval(nowTimer);
+  nowTimer = setInterval(() => drawNow(from, to), 30_000);
+}
+
+function drawNow(from, to) {
+  document.querySelectorAll('.nowline, .nowtag').forEach((n) => n.remove());
+  const now = new Date();
+  const idx = Math.floor((now - anchor) / 86_400_000);
+  if (idx < 0 || idx > 6) return;
+
+  const min = now.getHours() * 60 + now.getMinutes();
+  if (min < from * 60 || min > to * 60) return;
+
+  const top = (min - from * 60) / 60 * ROW;
+  const col = document.querySelectorAll('.col')[idx];
+  if (!col) return;
+
+  const line = document.createElement('div');
+  line.className = 'nowline';
+  line.style.top = top + 'px';
+  col.appendChild(line);
+
+  const tag = document.createElement('span');
+  tag.className = 'nowtag';
+  tag.style.top = top + 'px';
+  tag.textContent = hhmm(now);
+  document.querySelector('.hours').appendChild(tag);
+}
+
+function esc(s) {
+  return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
+
+/* ── 조작 ──────────────────────────────────── */
+document.getElementById('prev').onclick = () => { anchor = addDays(anchor, -7); load(); };
+document.getElementById('next').onclick = () => { anchor = addDays(anchor, 7); load(); };
+document.getElementById('today').onclick = () => { anchor = startOfWeek(new Date()); load(); };
+
+load().then(() => {
+  // 지금 시각이 화면 가운데 오도록 스크롤
+  const scroll = document.getElementById('scroll');
+  scroll.scrollTop = Math.max(0, (new Date().getHours() - 8) * ROW);
+});
+setInterval(load, REFRESH_MS);
+</script>
+</body>
+</html>
