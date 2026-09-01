@@ -452,6 +452,12 @@ load().then(() => {
   scroll.scrollTop = Math.max(0, (new Date().getHours() - 8) * ROW);
 });
 setInterval(load, REFRESH_MS);
+
+// 탭이 다시 보이면 즉시 갱신 (백그라운드 타이머 억제 대응)
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) load();
+});
+window.addEventListener('focus', () => load());
 </script>
 </body>
 </html>
